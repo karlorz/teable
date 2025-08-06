@@ -178,6 +178,7 @@ export class FieldDuplicateService {
         const modifyColumnSql = this.dbProvider.modifyColumnSchema(
           dbTableName,
           fieldInstance,
+          fieldInstance,
           formulaFieldMap
         );
 
@@ -1026,6 +1027,7 @@ export class FieldDuplicateService {
 
       const modifyColumnSql = this.dbProvider.modifyColumnSchema(
         dbTableName,
+        fieldInstance,
         fieldInstance,
         formulaFieldMap
       );
