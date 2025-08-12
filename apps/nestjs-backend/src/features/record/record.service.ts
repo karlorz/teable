@@ -203,18 +203,11 @@ export class RecordService {
       select: { dbTableName: true },
     });
 
-    // Get field info
-    const fieldRaws = await this.prismaService.txClient().field.findMany({
-      where: { tableId, deletedTime: null },
-    });
-
-    const fields = fieldRaws.map((fieldRaw) => createFieldInstanceByRaw(fieldRaw));
     const qb = this.knex(dbTableName);
     const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
       qb,
       tableId,
-      undefined,
-      fields
+      undefined
     );
     const sql = queryBuilder.where('__id', recordId).toQuery();
 
@@ -1316,8 +1309,7 @@ export class RecordService {
     const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
       qb,
       tableId,
-      undefined,
-      fields
+      undefined
     );
     const nativeQuery = queryBuilder.whereIn('__id', recordIds).toQuery();
 
@@ -1714,8 +1706,7 @@ export class RecordService {
     const { qb: recordQueryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
       queryBuilder,
       tableId,
-      viewId,
-      fields
+      viewId
     );
     queryBuilder = recordQueryBuilder;
     skip && queryBuilder.offset(skip);
