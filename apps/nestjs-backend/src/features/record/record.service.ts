@@ -36,6 +36,7 @@ import {
   or,
   parseGroup,
   Relationship,
+  StatisticsFunc,
 } from '@teable/core';
 import type { Prisma } from '@teable/db-main-prisma';
 import { PrismaService } from '@teable/db-main-prisma';
@@ -73,7 +74,7 @@ import { Timing } from '../../utils/timing';
 import { AttachmentsStorageService } from '../attachments/attachments-storage.service';
 import StorageAdapter from '../attachments/plugins/adapter';
 import { BatchService } from '../calculation/batch.service';
-import type { IVisualTableDefaultField } from '../field/constant';
+import { ID_FIELD_NAME, type IVisualTableDefaultField } from '../field/constant';
 import type { IFieldInstance } from '../field/model/factory';
 import { createFieldInstanceByRaw } from '../field/model/factory';
 import { TableIndexService } from '../table/table-index.service';
@@ -1958,24 +1959,31 @@ export class RecordService {
     const withUserId = this.cls.get('user.id');
     const queryBuilder = this.knex(dbTableName);
 
-    if (filter) {
-      this.dbProvider
-        .filterQuery(queryBuilder, fieldInstanceMap, filter, { withUserId })
-        .appendQueryBuilder();
-    }
+    const { qb } = await this.recordQueryBuilder.createRecordAggregateBuilder(queryBuilder, {
+      tableIdOrDbTableName: tableId,
+      aggregationFields: [],
+      viewId,
+      filter,
+      currentUserId: withUserId,
+    });
+    // if (filter) {
+    //   this.dbProvider
+    //     .filterQuery(queryBuilder, fieldInstanceMap, filter, { withUserId })
+    //     .appendQueryBuilder();
+    // }
 
     if (search && search[2]) {
       const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
-      queryBuilder.where((builder) => {
+      qb.where((builder) => {
         this.dbProvider.searchQuery(builder, searchFields, tableIndex, search);
       });
     }
 
-    const rowCountSql = queryBuilder.count({ count: '*' });
-    const result = await this.prismaService.$queryRawUnsafe<{ count?: number }[]>(
-      rowCountSql.toQuery()
-    );
+    const rowCountSql = qb.count({ count: '*' });
+    const sql = rowCountSql.toQuery();
+    this.logger.debug('getRowCountSql: %s', sql);
+    const result = await this.prismaService.$queryRawUnsafe<{ count?: number }[]>(sql);
     return Number(result[0].count);
   }
 
@@ -2035,14 +2043,28 @@ export class RecordService {
     const mergedFilter = mergeWithDefaultFilter(filterStr, filter);
     const groupFieldIds = groupBy.map((item) => item.fieldId);
 
-    const queryBuilder = builder.from(viewCte ?? dbTableName);
+    const table = builder.from(viewCte ?? dbTableName);
 
-    if (mergedFilter) {
-      const withUserId = this.cls.get('user.id');
-      this.dbProvider
-        .filterQuery(queryBuilder, fieldInstanceMap, mergedFilter, { withUserId })
-        .appendQueryBuilder();
-    }
+    const withUserId = this.cls.get('user.id');
+    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordAggregateBuilder(table, {
+      tableIdOrDbTableName: tableId,
+      viewId,
+      filter: mergedFilter,
+      aggregationFields: [
+        // {
+        //   fieldId: ID_FIELD_NAME,
+        //   statisticFunc: StatisticsFunc.Count,
+        // },
+      ],
+      groupBy: groupFieldIds,
+      currentUserId: withUserId,
+    });
+
+    // if (mergedFilter) {
+    //   this.dbProvider
+    //     .filterQuery(queryBuilder, fieldInstanceMap, mergedFilter, { withUserId })
+    //     .appendQueryBuilder();
+    // }
 
     if (search && search[2]) {
       const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
@@ -2052,14 +2074,17 @@ export class RecordService {
       });
     }
 
-    this.dbProvider
-      .sortQuery(queryBuilder, fieldInstanceMap, groupBy, undefined, undefined)
-      .appendSortBuilder();
-    this.dbProvider.groupQuery(queryBuilder, fieldInstanceMap, groupFieldIds).appendGroupBuilder();
+    // this.dbProvider
+    //   .sortQuery(queryBuilder, fieldInstanceMap, groupBy, undefined, undefined)
+    //   .appendSortBuilder();
+    // this.dbProvider
+    //   .groupQuery(queryBuilder, fieldInstanceMap, groupFieldIds, undefined, undefined)
+    //   .appendGroupBuilder();
 
     queryBuilder.count({ __c: '*' }).limit(this.thresholdConfig.maxGroupPoints);
 
     const groupSql = queryBuilder.toQuery();
+    this.logger.debug('groupSql: %s', groupSql);
     const groupFields = groupFieldIds.map((fieldId) => fieldInstanceMap[fieldId]).filter(Boolean);
     const rowCount = await this.getRowCountByFilter(
       dbTableName,
