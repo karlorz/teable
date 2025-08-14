@@ -45,6 +45,7 @@ import { convertValueToStringify, string2Hash } from '../../utils';
 import type { IFieldInstance } from '../field/model/factory';
 import { createFieldInstanceByRaw } from '../field/model/factory';
 import type { DateFieldDto } from '../field/model/field-dto/date-field.dto';
+import { InjectRecordQueryBuilder, IRecordQueryBuilder } from '../record/query-builder';
 import { RecordPermissionService } from '../record/record-permission.service';
 import { RecordService } from '../record/record.service';
 import { TableIndexService } from '../table/table-index.service';
@@ -76,7 +77,8 @@ export class AggregationService {
     @InjectModel('CUSTOM_KNEX') private readonly knex: Knex,
     @InjectDbProvider() private readonly dbProvider: IDbProvider,
     private readonly cls: ClsService<IClsStore>,
-    private readonly recordPermissionService: RecordPermissionService
+    private readonly recordPermissionService: RecordPermissionService,
+    @InjectRecordQueryBuilder() private readonly recordQueryBuilder: IRecordQueryBuilder
   ) {}
 
   async performAggregation(params: {
@@ -530,11 +532,18 @@ export class AggregationService {
     );
     queryBuilder.from(viewCte ?? dbTableName);
 
-    if (filter) {
-      this.dbProvider
-        .filterQuery(queryBuilder, fieldInstanceMap, filter, { withUserId })
-        .appendQueryBuilder();
-    }
+    const { qb } = await this.recordQueryBuilder.createRecordQueryBuilder(queryBuilder, {
+      tableIdOrDbTableName: tableId,
+      viewId,
+      currentUserId: withUserId,
+      filter,
+    });
+
+    // if (filter) {
+    //   this.dbProvider
+    //     .filterQuery(queryBuilder, fieldInstanceMap, filter, { withUserId })
+    //     .appendQueryBuilder();
+    // }
 
     if (search && search[2]) {
       const searchFields = await this.recordService.getSearchFields(
@@ -543,35 +552,31 @@ export class AggregationService {
         viewId
       );
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
-      queryBuilder.where((builder) => {
+      qb.where((builder) => {
         this.dbProvider.searchQuery(builder, searchFields, tableIndex, search);
       });
     }
 
     if (selectedRecordIds) {
       filterLinkCellCandidate
-        ? queryBuilder.whereNotIn(`${dbTableName}.__id`, selectedRecordIds)
-        : queryBuilder.whereIn(`${dbTableName}.__id`, selectedRecordIds);
+        ? qb.whereNotIn(`${dbTableName}.__id`, selectedRecordIds)
+        : qb.whereIn(`${dbTableName}.__id`, selectedRecordIds);
     }
 
     if (filterLinkCellCandidate) {
-      await this.recordService.buildLinkCandidateQuery(
-        queryBuilder,
-        tableId,
-        filterLinkCellCandidate
-      );
+      await this.recordService.buildLinkCandidateQuery(qb, tableId, filterLinkCellCandidate);
     }
 
     if (filterLinkCellSelected) {
       await this.recordService.buildLinkSelectedQuery(
-        queryBuilder,
+        qb,
         tableId,
         dbTableName,
         filterLinkCellSelected
       );
     }
 
-    return this.getRowCount(this.prisma, queryBuilder);
+    return this.getRowCount(this.prisma, qb);
   }
 
   private convertValueToNumberOrString(currentValue: unknown): number | string | null {
