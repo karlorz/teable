@@ -1690,7 +1690,7 @@ export class RecordService {
 
     const { filter: filterWithGroup } = await this.getGroupRelatedData(tableId, query);
 
-    let { queryBuilder } = await this.buildFilterSortQuery(tableId, {
+    const { queryBuilder } = await this.buildFilterSortQuery(tableId, {
       viewId,
       ignoreViewQuery,
       filter: filterWithGroup,
@@ -1701,14 +1701,6 @@ export class RecordService {
       filterLinkCellCandidate,
       filterLinkCellSelected,
     });
-    const { qb: recordQueryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
-      queryBuilder,
-      {
-        tableIdOrDbTableName: tableId,
-        viewId,
-      }
-    );
-    queryBuilder = recordQueryBuilder;
     skip && queryBuilder.offset(skip);
     take !== -1 && take && queryBuilder.limit(take);
     const sql = queryBuilder.toQuery();
