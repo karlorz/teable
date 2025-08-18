@@ -517,7 +517,7 @@ export class AggregationService implements IAggregationService {
       withUserId,
       viewId,
     } = params;
-    const { viewCte, builder: queryBuilder } = await this.recordPermissionService.wrapView(
+    const { viewCte } = await this.recordPermissionService.wrapView(
       tableId,
       this.knex.queryBuilder(),
       {
@@ -525,14 +525,16 @@ export class AggregationService implements IAggregationService {
         viewId,
       }
     );
-    queryBuilder.from(viewCte ?? dbTableName);
 
-    const { qb } = await this.recordQueryBuilder.createRecordQueryBuilder(queryBuilder, {
-      tableIdOrDbTableName: tableId,
-      viewId,
-      currentUserId: withUserId,
-      filter,
-    });
+    const { qb, alias } = await this.recordQueryBuilder.createRecordQueryBuilder(
+      viewCte ?? dbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        viewId,
+        currentUserId: withUserId,
+        filter,
+      }
+    );
 
     // if (filter) {
     //   this.dbProvider
@@ -554,8 +556,8 @@ export class AggregationService implements IAggregationService {
 
     if (selectedRecordIds) {
       filterLinkCellCandidate
-        ? qb.whereNotIn(`${dbTableName}.__id`, selectedRecordIds)
-        : qb.whereIn(`${dbTableName}.__id`, selectedRecordIds);
+        ? qb.whereNotIn(`${alias}.__id`, selectedRecordIds)
+        : qb.whereIn(`${alias}.__id`, selectedRecordIds);
     }
 
     if (filterLinkCellCandidate) {
@@ -563,12 +565,7 @@ export class AggregationService implements IAggregationService {
     }
 
     if (filterLinkCellSelected) {
-      await this.recordService.buildLinkSelectedQuery(
-        qb,
-        tableId,
-        dbTableName,
-        filterLinkCellSelected
-      );
+      await this.recordService.buildLinkSelectedQuery(qb, tableId, alias, filterLinkCellSelected);
     }
 
     return this.getRowCount(this.prisma, qb);

@@ -204,11 +204,13 @@ export class RecordService {
       select: { dbTableName: true },
     });
 
-    const qb = this.knex(dbTableName);
-    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(qb, {
-      tableIdOrDbTableName: tableId,
-      viewId: undefined,
-    });
+    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
+      dbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        viewId: undefined,
+      }
+    );
     const sql = queryBuilder.where('__id', recordId).toQuery();
 
     const result = await prisma.$queryRawUnsafe<{ id: string; [key: string]: unknown }[]>(sql);
@@ -528,6 +530,7 @@ export class RecordService {
    * @param {Pick<IGetRecordsRo, 'viewId' | 'orderBy' | 'filter' | 'filterLinkCellCandidate'>} query - An object of query parameters, including view ID, sorting rules, filtering conditions, etc.
    * @returns {Promise<Knex.QueryBuilder>} Returns an instance of the Knex query builder encapsulating the constructed SQL query.
    */
+  // eslint-disable-next-line sonarjs/cognitive-complexity
   async buildFilterSortQuery(
     tableId: string,
     query: Pick<
@@ -545,20 +548,21 @@ export class RecordService {
     >
   ): Promise<Knex.QueryBuilder> {
     // Prepare the base query builder, filtering conditions, sorting rules, grouping rules and field mapping
-    const { dbTableName, queryBuilder, viewCte, filter, search, orderBy, groupBy, fieldMap } =
+    const { dbTableName, viewCte, filter, search, orderBy, groupBy, fieldMap } =
       await this.prepareQuery(tableId, query);
 
     // Retrieve the current user's ID to build user-related query conditions
     const currentUserId = this.cls.get('user.id');
-    const { qb } = await this.recordQueryBuilder.createRecordQueryBuilder(queryBuilder, {
-      tableIdOrDbTableName: tableId,
-      viewId: query.viewId,
-      filter,
-      currentUserId,
-      sort: [...(groupBy ?? []), ...(orderBy ?? [])],
-    });
-
-    const viewQueryDbTableName = viewCte ?? dbTableName;
+    const { qb, alias } = await this.recordQueryBuilder.createRecordQueryBuilder(
+      viewCte ?? dbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        viewId: query.viewId,
+        filter,
+        currentUserId,
+        sort: [...(groupBy ?? []), ...(orderBy ?? [])],
+      }
+    );
 
     if (query.filterLinkCellSelected && query.filterLinkCellCandidate) {
       throw new BadRequestException(
@@ -568,8 +572,8 @@ export class RecordService {
 
     if (query.selectedRecordIds) {
       query.filterLinkCellCandidate
-        ? qb.whereNotIn(`${viewQueryDbTableName}.__id`, query.selectedRecordIds)
-        : qb.whereIn(`${viewQueryDbTableName}.__id`, query.selectedRecordIds);
+        ? qb.whereNotIn(`${alias}.__id`, query.selectedRecordIds)
+        : qb.whereIn(`${alias}.__id`, query.selectedRecordIds);
     }
 
     if (query.filterLinkCellCandidate) {
@@ -577,12 +581,7 @@ export class RecordService {
     }
 
     if (query.filterLinkCellSelected) {
-      await this.buildLinkSelectedQuery(
-        qb,
-        tableId,
-        viewQueryDbTableName,
-        query.filterLinkCellSelected
-      );
+      await this.buildLinkSelectedQuery(qb, tableId, alias, query.filterLinkCellSelected);
     }
 
     // Add filtering conditions to the query builder
@@ -602,14 +601,14 @@ export class RecordService {
 
     // ignore sorting when filterLinkCellSelected is set
     if (query.filterLinkCellSelected && Array.isArray(query.filterLinkCellSelected)) {
-      await this.buildLinkSelectedSort(qb, viewQueryDbTableName, query.filterLinkCellSelected);
+      await this.buildLinkSelectedSort(qb, alias, query.filterLinkCellSelected);
     } else {
       const basicSortIndex = await this.getBasicOrderIndexField(dbTableName, query.viewId);
       // view sorting added by default
-      qb.orderBy(`${viewQueryDbTableName}.${basicSortIndex}`, 'asc');
+      qb.orderBy(`${alias}.${basicSortIndex}`, 'asc');
     }
 
-    this.logger.debug('buildFilterSortQuery: %s', queryBuilder.toQuery());
+    this.logger.debug('buildFilterSortQuery: %s', qb.toQuery());
     // If you return `queryBuilder` directly and use `await` to receive it,
     // it will perform a query DB operation, which we obviously don't want to see here
     return { queryBuilder: qb, dbTableName, viewCte };
@@ -1306,11 +1305,13 @@ export class RecordService {
   ): Promise<ISnapshotBase<IRecord>[]> {
     const { tableId, recordIds, projection, fieldKeyType, cellFormat } = query;
     const fields = await this.getFieldsByProjection(tableId, projection, fieldKeyType);
-    const qb = builder.from(viewQueryDbTableName);
-    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(qb, {
-      tableIdOrDbTableName: tableId,
-      viewId: undefined,
-    });
+    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordQueryBuilder(
+      viewQueryDbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        viewId: undefined,
+      }
+    );
     const nativeQuery = queryBuilder.whereIn('__id', recordIds).toQuery();
 
     this.logger.debug('getSnapshotBulkInner query: %s', nativeQuery);
@@ -1949,9 +1950,8 @@ export class RecordService {
     viewId?: string
   ) {
     const withUserId = this.cls.get('user.id');
-    const queryBuilder = this.knex(dbTableName);
 
-    const { qb } = await this.recordQueryBuilder.createRecordAggregateBuilder(queryBuilder, {
+    const { qb } = await this.recordQueryBuilder.createRecordAggregateBuilder(dbTableName, {
       tableIdOrDbTableName: tableId,
       aggregationFields: [],
       viewId,
@@ -2035,22 +2035,23 @@ export class RecordService {
     const mergedFilter = mergeWithDefaultFilter(filterStr, filter);
     const groupFieldIds = groupBy.map((item) => item.fieldId);
 
-    const table = builder.from(viewCte ?? dbTableName);
-
     const withUserId = this.cls.get('user.id');
-    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordAggregateBuilder(table, {
-      tableIdOrDbTableName: tableId,
-      viewId,
-      filter: mergedFilter,
-      aggregationFields: [
-        // {
-        //   fieldId: ID_FIELD_NAME,
-        //   statisticFunc: StatisticsFunc.Count,
-        // },
-      ],
-      groupBy: groupFieldIds,
-      currentUserId: withUserId,
-    });
+    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordAggregateBuilder(
+      viewCte ?? dbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        viewId,
+        filter: mergedFilter,
+        aggregationFields: [
+          // {
+          //   fieldId: ID_FIELD_NAME,
+          //   statisticFunc: StatisticsFunc.Count,
+          // },
+        ],
+        groupBy: groupFieldIds,
+        currentUserId: withUserId,
+      }
+    );
 
     // if (mergedFilter) {
     //   this.dbProvider
