@@ -1007,7 +1007,10 @@ export class RecordService {
 
     const allViewIndexes = await this.getAllViewIndexesField(dbTableName);
 
-    const validationFields = fieldRaws.filter((field) => field.notNull || field.unique);
+    const validationFields = fieldRaws
+      .filter((f) => !f.isComputed)
+      .filter((f) => f.type !== FieldType.Link)
+      .filter((field) => field.notNull || field.unique);
 
     const snapshots = records
       .map((record, i) =>
