@@ -36,9 +36,7 @@ import type {
   ITableVo,
   IUpdateOrderRo,
 } from '@teable/openapi';
-import { Knex } from 'knex';
 import { nanoid } from 'nanoid';
-import { InjectModel } from 'nest-knexjs';
 import { ThresholdConfig, IThresholdConfig } from '../../../configs/threshold.config';
 import { InjectDbProvider } from '../../../db-provider/db.provider';
 import { IDbProvider } from '../../../db-provider/db.provider.interface';
@@ -49,6 +47,7 @@ import { FieldCreatingService } from '../../field/field-calculate/field-creating
 import { FieldSupplementService } from '../../field/field-calculate/field-supplement.service';
 import { createFieldInstanceByVo } from '../../field/model/factory';
 import { FieldOpenApiService } from '../../field/open-api/field-open-api.service';
+import { RecordMaterialViewService } from '../../record/material-view/record-material-view.service';
 import { RecordOpenApiService } from '../../record/open-api/record-open-api.service';
 import { RecordService } from '../../record/record.service';
 import { ViewOpenApiService } from '../../view/open-api/view-open-api.service';
@@ -71,8 +70,7 @@ export class TableOpenApiService {
     private readonly permissionService: PermissionService,
     private readonly tableDuplicateService: TableDuplicateService,
     @InjectDbProvider() private readonly dbProvider: IDbProvider,
-    @ThresholdConfig() private readonly thresholdConfig: IThresholdConfig,
-    @InjectModel('CUSTOM_KNEX') private readonly knex: Knex
+    @ThresholdConfig() private readonly thresholdConfig: IThresholdConfig
   ) {}
 
   private async createView(tableId: string, viewRos: IViewRo[]) {
