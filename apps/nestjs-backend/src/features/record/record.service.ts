@@ -556,17 +556,14 @@ export class RecordService {
       | 'collapsedGroupIds'
       | 'selectedRecordIds'
     >
-  ): Promise<Knex.QueryBuilder> {
-    // console.log('=== buildFilterSortQuery called ===');
-    // console.log('Table ID:', tableId);
-    // console.log('Query:', JSON.stringify(query, null, 2));
+  ) {
     // Prepare the base query builder, filtering conditions, sorting rules, grouping rules and field mapping
     const { dbTableName, viewCte, filter, search, orderBy, groupBy, fieldMap } =
       await this.prepareQuery(tableId, query);
 
     // Retrieve the current user's ID to build user-related query conditions
     const currentUserId = this.cls.get('user.id');
-    const { qb, alias } = await this.recordQueryBuilder.createRecordQueryBuilder(
+    const { qb, alias, selectionMap } = await this.recordQueryBuilder.createRecordQueryBuilder(
       viewCte ?? dbTableName,
       {
         tableIdOrDbTableName: tableId,
@@ -603,18 +600,11 @@ export class RecordService {
       );
     }
 
-    // Add filtering conditions to the query builder
-    // this.dbProvider
-    //   .filterQuery(qb, fieldMap, filter, { withUserId: currentUserId })
-    //   .appendQueryBuilder();
-    // Add sorting rules to the query builder
-    // this.dbProvider.sortQuery(qb, fieldMap, [...(groupBy ?? []), ...orderBy]).appendSortBuilder();
-
     if (search && search[2] && fieldMap) {
       const searchFields = await this.getSearchFields(fieldMap, search, query?.viewId);
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       qb.where((builder) => {
-        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search);
+        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
       });
     }
 
@@ -1970,13 +1960,16 @@ export class RecordService {
   ) {
     const withUserId = this.cls.get('user.id');
 
-    const { qb } = await this.recordQueryBuilder.createRecordAggregateBuilder(dbTableName, {
-      tableIdOrDbTableName: tableId,
-      aggregationFields: [],
-      viewId,
-      filter,
-      currentUserId: withUserId,
-    });
+    const { qb, selectionMap } = await this.recordQueryBuilder.createRecordAggregateBuilder(
+      dbTableName,
+      {
+        tableIdOrDbTableName: tableId,
+        aggregationFields: [],
+        viewId,
+        filter,
+        currentUserId: withUserId,
+      }
+    );
     // if (filter) {
     //   this.dbProvider
     //     .filterQuery(queryBuilder, fieldInstanceMap, filter, { withUserId })
@@ -1987,7 +1980,7 @@ export class RecordService {
       const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       qb.where((builder) => {
-        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search);
+        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
       });
     }
 
@@ -2055,9 +2048,8 @@ export class RecordService {
     const groupFieldIds = groupBy.map((item) => item.fieldId);
 
     const withUserId = this.cls.get('user.id');
-    const { qb: queryBuilder } = await this.recordQueryBuilder.createRecordAggregateBuilder(
-      viewCte ?? dbTableName,
-      {
+    const { qb: queryBuilder, selectionMap } =
+      await this.recordQueryBuilder.createRecordAggregateBuilder(viewCte ?? dbTableName, {
         tableIdOrDbTableName: tableId,
         viewId,
         filter: mergedFilter,
@@ -2069,8 +2061,7 @@ export class RecordService {
         ],
         groupBy: groupFieldIds,
         currentUserId: withUserId,
-      }
-    );
+      });
 
     // if (mergedFilter) {
     //   this.dbProvider
@@ -2082,7 +2073,7 @@ export class RecordService {
       const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       queryBuilder.where((builder) => {
-        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search);
+        this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
       });
     }
 

@@ -186,7 +186,8 @@ export interface IDbProvider {
     originQueryBuilder: Knex.QueryBuilder,
     searchFields: IFieldInstance[],
     tableIndex: TableIndex[],
-    search: [string, string?, boolean?]
+    search: [string, string?, boolean?],
+    context?: IRecordQueryFilterContext
   ): Knex.QueryBuilder;
 
   searchIndexQuery(
@@ -195,6 +196,7 @@ export interface IDbProvider {
     searchField: IFieldInstance[],
     searchIndexRo: Partial<ISearchIndexByQueryRo>,
     tableIndex: TableIndex[],
+    context?: IRecordQueryFilterContext,
     baseSortIndex?: string,
     setFilterQuery?: (qb: Knex.QueryBuilder) => void,
     setSortQuery?: (qb: Knex.QueryBuilder) => void
@@ -204,7 +206,8 @@ export interface IDbProvider {
     originQueryBuilder: Knex.QueryBuilder,
     searchField: IFieldInstance[],
     search: [string, string?, boolean?],
-    tableIndex: TableIndex[]
+    tableIndex: TableIndex[],
+    context?: IRecordQueryFilterContext
   ): Knex.QueryBuilder;
 
   searchIndex(): IndexBuilderAbstract;

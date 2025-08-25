@@ -3,6 +3,7 @@ import type { ISearchIndexByQueryRo, TableIndex } from '@teable/openapi';
 import type { Knex } from 'knex';
 import { get } from 'lodash';
 import type { IFieldInstance } from '../../features/field/model/factory';
+import type { IRecordQueryFilterContext } from '../../features/record/query-builder/record-query-builder.interface';
 import { SearchQueryAbstract } from './abstract';
 import { getOffset } from './get-offset';
 import type { ISearchCellValueType } from './types';
@@ -13,9 +14,10 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
     protected originQueryBuilder: Knex.QueryBuilder,
     protected field: IFieldInstance,
     protected search: [string, string?, boolean?],
-    protected tableIndex: TableIndex[]
+    protected tableIndex: TableIndex[],
+    protected context?: IRecordQueryFilterContext
   ) {
-    super(originQueryBuilder, field, search, tableIndex);
+    super(originQueryBuilder, field, search, tableIndex, context);
     this.knex = originQueryBuilder.client;
   }
 
@@ -88,24 +90,20 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
   protected text() {
     const { search, knex } = this;
     const [searchValue] = search;
-    return knex.raw(`?? LIKE ?`, [this.field.dbFieldName, `%${searchValue}%`]);
+    return knex.raw(`${this.fieldName} LIKE ?`, [`%${searchValue}%`]);
   }
 
   protected json() {
     const { search, knex } = this;
     const [searchValue] = search;
-    return knex.raw("json_extract(??, '$.title') LIKE ?", [
-      this.field.dbFieldName,
-      `%${searchValue}%`,
-    ]);
+    return knex.raw(`json_extract(${this.fieldName}, '$.title') LIKE ?`, [`%${searchValue}%`]);
   }
 
   protected date() {
     const { search, knex } = this;
     const [searchValue] = search;
     const timeZone = (this.field.options as IDateFieldOptions).formatting.timeZone;
-    return knex.raw('DATETIME(??, ?) LIKE ?', [
-      this.field.dbFieldName,
+    return knex.raw(`DATETIME(${this.fieldName}, ?) LIKE ?`, [
       `${getOffset(timeZone)} hour`,
       `%${searchValue}%`,
     ]);
@@ -115,7 +113,7 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
     const { search, knex } = this;
     const [searchValue] = search;
     const precision = get(this.field, ['options', 'formatting', 'precision']) ?? 0;
-    return knex.raw('ROUND(??, ?) LIKE ?', [this.field.dbFieldName, precision, `%${searchValue}%`]);
+    return knex.raw(`ROUND(${this.fieldName}, ?) LIKE ?`, [precision, `%${searchValue}%`]);
   }
 
   protected multipleText() {
@@ -126,13 +124,13 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
       EXISTS (
         SELECT 1 FROM (
           SELECT group_concat(je.value, ', ') as aggregated
-          FROM json_each(??) as je
+          FROM json_each(${this.fieldName}) as je
           WHERE je.key != 'title'
         )
         WHERE aggregated LIKE ?
       )
       `,
-      [this.field.dbFieldName, `%${searchValue}%`]
+      [`%${searchValue}%`]
     );
   }
 
@@ -144,12 +142,12 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
       EXISTS (
         SELECT 1 FROM (
           SELECT group_concat(json_extract(je.value, '$.title'), ', ') as aggregated
-          FROM json_each(??) as je
+          FROM json_each(${this.fieldName}) as je
         )
         WHERE aggregated LIKE ?
       )
       `,
-      [this.field.dbFieldName, `%${searchValue}%`]
+      [`%${searchValue}%`]
     );
   }
 
@@ -162,12 +160,12 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
       EXISTS (
         SELECT 1 FROM (
           SELECT group_concat(ROUND(je.value, ?), ', ') as aggregated
-          FROM json_each(??) as je
+          FROM json_each(${this.fieldName}) as je
         )
         WHERE aggregated LIKE ?
       )
       `,
-      [precision, this.field.dbFieldName, `%${searchValue}%`]
+      [precision, `%${searchValue}%`]
     );
   }
 
@@ -180,12 +178,12 @@ export class SearchQuerySqlite extends SearchQueryAbstract {
       EXISTS (
         SELECT 1 FROM (
           SELECT group_concat(DATETIME(je.value, ?), ', ') as aggregated
-          FROM json_each(??) as je
+          FROM json_each(${this.fieldName}) as je
         )
         WHERE aggregated LIKE ?
       )
       `,
-      [`${getOffset(timeZone)} hour`, this.field.dbFieldName, `%${searchValue}%`]
+      [`${getOffset(timeZone)} hour`, `%${searchValue}%`]
     );
   }
 }
@@ -197,6 +195,7 @@ export class SearchQuerySqliteBuilder {
     public searchField: IFieldInstance[],
     public searchIndexRo: ISearchIndexByQueryRo,
     public tableIndex: TableIndex[],
+    public context?: IRecordQueryFilterContext,
     public baseSortIndex?: string,
     public setFilterQuery?: (qb: Knex.QueryBuilder) => void,
     public setSortQuery?: (qb: Knex.QueryBuilder) => void
@@ -208,10 +207,11 @@ export class SearchQuerySqliteBuilder {
     this.searchIndexRo = searchIndexRo;
     this.setFilterQuery = setFilterQuery;
     this.setSortQuery = setSortQuery;
+    this.context = context;
   }
 
   getSearchQuery() {
-    const { queryBuilder, searchIndexRo, searchField, tableIndex } = this;
+    const { queryBuilder, searchIndexRo, searchField, tableIndex, context } = this;
     const { search } = searchIndexRo;
 
     if (!search || !searchField?.length) {
@@ -219,7 +219,13 @@ export class SearchQuerySqliteBuilder {
     }
 
     return searchField.map((field) => {
-      const searchQueryBuilder = new SearchQuerySqlite(queryBuilder, field, search, tableIndex);
+      const searchQueryBuilder = new SearchQuerySqlite(
+        queryBuilder,
+        field,
+        search,
+        tableIndex,
+        context
+      );
       return searchQueryBuilder.getSql();
     });
   }
@@ -275,20 +281,24 @@ export class SearchQuerySqliteBuilder {
     queryBuilder.with('search_field_union_table', (qb) => {
       for (let index = 0; index < searchField.length; index++) {
         const currentWhereRaw = searchQuerySql[index];
-        const dbFieldName = searchField[index].dbFieldName;
+        const field = searchField[index];
+
+        // Get the correct field name using the same logic as in SearchQueryAbstract
+        const selection = this.context?.selectionMap.get(field.id);
+        const fieldName = selection ? (selection as string) : field.dbFieldName;
 
         // boolean field or new field which does not support search should be skipped
-        if (!currentWhereRaw || !dbFieldName) {
+        if (!currentWhereRaw || !fieldName) {
           continue;
         }
 
         if (index === 0) {
-          qb.select('*', knexInstance.raw(`? as matched_column`, [dbFieldName]))
+          qb.select('*', knexInstance.raw(`? as matched_column`, [fieldName]))
             .whereRaw(`${currentWhereRaw}`)
             .from('search_hit_row');
         } else {
           qb.unionAll(function () {
-            this.select('*', knexInstance.raw(`? as matched_column`, [dbFieldName]))
+            this.select('*', knexInstance.raw(`? as matched_column`, [fieldName]))
               .whereRaw(`${currentWhereRaw}`)
               .from('search_hit_row');
           });
@@ -301,7 +311,14 @@ export class SearchQuerySqliteBuilder {
       .select(
         knexInstance.raw(
           `CASE
-            ${searchField.map((field) => `WHEN matched_column = '${field.dbFieldName}' THEN '${field.id}'`).join(' ')}
+            ${searchField
+              .map((field) => {
+                // Get the correct field name using the same logic as in SearchQueryAbstract
+                const selection = this.context?.selectionMap.get(field.id);
+                const fieldName = selection ? (selection as string) : field.dbFieldName;
+                return `WHEN matched_column = '${fieldName}' THEN '${field.id}'`;
+              })
+              .join(' ')}
           END AS "fieldId"`
         )
       )
@@ -318,9 +335,13 @@ export class SearchQuerySqliteBuilder {
     baseSortIndex && queryBuilder.orderBy(baseSortIndex, 'asc');
 
     const cases = searchField.map((field, index) => {
+      // Get the correct field name using the same logic as in SearchQueryAbstract
+      const selection = this.context?.selectionMap.get(field.id);
+      const fieldName = selection ? (selection as string) : field.dbFieldName;
+
       return knexInstance.raw(`CASE WHEN ?? = ? THEN ? END`, [
         'matched_column',
-        field.dbFieldName,
+        fieldName,
         index + 1,
       ]);
     });
