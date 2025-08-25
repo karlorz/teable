@@ -484,10 +484,7 @@ export class FieldConvertingService {
       >(nativeSql.sql, ...nativeSql.bindings);
 
     for (const row of result) {
-      let oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]) as string[];
-      if (field.isLookup) {
-        oldCellValue = oldCellValue.flat(Infinity) as string[];
-      }
+      const oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]) as string[];
       const newCellValue = oldCellValue.reduce<string[]>((pre, value) => {
         // if key not in updatedChoiceMap, we should keep it
         if (!(value in updatedChoiceMap)) {
@@ -672,10 +669,7 @@ export class FieldConvertingService {
       .$queryRawUnsafe<{ __id: string; [dbFieldName: string]: string }[]>(nativeSql.toQuery());
 
     for (const row of result) {
-      let oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]);
-      if (field.isLookup && Array.isArray(oldCellValue)) {
-        oldCellValue = oldCellValue.flat(Infinity) as string[];
-      }
+      const oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]);
 
       let newCellValue;
 
@@ -723,10 +717,7 @@ export class FieldConvertingService {
       .txClient()
       .$queryRawUnsafe<{ __id: string; [dbFieldName: string]: string }[]>(nativeSql.toQuery());
     for (const row of result) {
-      let oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]);
-      if (field.isLookup && Array.isArray(oldCellValue)) {
-        oldCellValue = oldCellValue.flat(Infinity) as string[];
-      }
+      const oldCellValue = field.convertDBValue2CellValue(row[field.dbFieldName]);
       opsMap[row.__id] = [
         RecordOpBuilder.editor.setRecord.build({
           fieldId: field.id,
