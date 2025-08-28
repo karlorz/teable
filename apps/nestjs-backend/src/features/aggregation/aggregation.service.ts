@@ -475,14 +475,11 @@ export class AggregationService implements IAggregationService {
       .from(tableAlias);
 
     const qb = this.dbProvider
-      .aggregationQuery(
-        queryBuilder,
+      .aggregationQuery(queryBuilder, fieldInstanceMap, statisticFields, undefined, {
+        selectionMap: new Map(),
+        tableDbName: dbTableName,
         tableAlias,
-        fieldInstanceMap,
-        statisticFields,
-        undefined,
-        undefined
-      )
+      })
       .appendBuilder();
 
     if (groupBy) {
