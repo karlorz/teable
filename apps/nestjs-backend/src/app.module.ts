@@ -85,7 +85,7 @@ export const appModules = {
     AiModule,
     PluginPanelModule,
     PluginContextMenuModule,
-    DatabaseViewModule,
+    // DatabaseViewModule,
   ],
   providers: [InitBootstrapProvider],
 };
