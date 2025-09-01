@@ -369,7 +369,7 @@ export class RecordCalculateService {
       this.recordService.convertProjection(projection),
       fieldKeyType,
       CellFormat.Json,
-      true
+      false
     );
 
     return {

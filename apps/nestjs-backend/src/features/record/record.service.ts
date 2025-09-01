@@ -531,7 +531,6 @@ export class RecordService {
    *
    * @param {string} tableId - The unique identifier of the table to determine the target of the query.
    * @param {Pick<IGetRecordsRo, 'viewId' | 'orderBy' | 'filter' | 'filterLinkCellCandidate'>} query - An object of query parameters, including view ID, sorting rules, filtering conditions, etc.
-   * @returns {Promise<Knex.QueryBuilder>} Returns an instance of the Knex query builder encapsulating the constructed SQL query.
    */
   // eslint-disable-next-line sonarjs/cognitive-complexity
   async buildFilterSortQuery(
@@ -697,7 +696,11 @@ export class RecordService {
     return Object.keys(projection).length > 0 ? projection : undefined;
   }
 
-  async getRecords(tableId: string, query: IGetRecordsRo): Promise<IRecordsVo> {
+  async getRecords(
+    tableId: string,
+    query: IGetRecordsRo,
+    useViewCache = false
+  ): Promise<IRecordsVo> {
     const queryResult = await this.getDocIdsByQuery(tableId, {
       ignoreViewQuery: query.ignoreViewQuery ?? false,
       viewId: query.viewId,
@@ -721,7 +724,8 @@ export class RecordService {
       queryResult.ids,
       projection,
       query.fieldKeyType || FieldKeyType.Name,
-      query.cellFormat
+      query.cellFormat,
+      useViewCache
     );
 
     return {
@@ -1305,8 +1309,8 @@ export class RecordService {
       projection?: { [fieldNameOrId: string]: boolean };
       fieldKeyType: FieldKeyType;
       cellFormat: CellFormat;
-    },
-    disableViewCache?: boolean
+      useViewCache: boolean;
+    }
   ): Promise<ISnapshotBase<IRecord>[]> {
     const { tableId, recordIds, projection, fieldKeyType, cellFormat } = query;
     const fields = await this.getFieldsByProjection(tableId, projection, fieldKeyType);
@@ -1315,7 +1319,7 @@ export class RecordService {
       {
         tableIdOrDbTableName: tableId,
         viewId: undefined,
-        disableViewCache,
+        useViewCache: query.useViewCache,
       }
     );
     const nativeQuery = queryBuilder.whereIn('__id', recordIds).toQuery();
@@ -1383,7 +1387,7 @@ export class RecordService {
     projection?: { [fieldNameOrId: string]: boolean },
     fieldKeyType: FieldKeyType = FieldKeyType.Id, // for convince of collaboration, getSnapshotBulk use id as field key by default.
     cellFormat = CellFormat.Json,
-    disableViewCache = false
+    useViewCache = false
   ) {
     const dbTableName = await this.getDbTableName(tableId);
     const { viewCte, builder } = await this.recordPermissionService.wrapView(
@@ -1394,18 +1398,14 @@ export class RecordService {
       }
     );
     const viewQueryDbTableName = viewCte ?? dbTableName;
-    return this.getSnapshotBulkInner(
-      builder,
-      viewQueryDbTableName,
-      {
-        tableId,
-        recordIds,
-        projection,
-        fieldKeyType,
-        cellFormat,
-      },
-      disableViewCache
-    );
+    return this.getSnapshotBulkInner(builder, viewQueryDbTableName, {
+      tableId,
+      recordIds,
+      projection,
+      fieldKeyType,
+      cellFormat,
+      useViewCache,
+    });
   }
 
   async getSnapshotBulk(
@@ -1414,21 +1414,17 @@ export class RecordService {
     projection?: { [fieldNameOrId: string]: boolean },
     fieldKeyType: FieldKeyType = FieldKeyType.Id, // for convince of collaboration, getSnapshotBulk use id as field key by default.
     cellFormat = CellFormat.Json,
-    disableViewCache = false
+    useViewCache = false
   ): Promise<ISnapshotBase<IRecord>[]> {
     const dbTableName = await this.getDbTableName(tableId);
-    return this.getSnapshotBulkInner(
-      this.knex.queryBuilder(),
-      dbTableName,
-      {
-        tableId,
-        recordIds,
-        projection,
-        fieldKeyType,
-        cellFormat,
-      },
-      disableViewCache
-    );
+    return this.getSnapshotBulkInner(this.knex.queryBuilder(), dbTableName, {
+      tableId,
+      recordIds,
+      projection,
+      fieldKeyType,
+      cellFormat,
+      useViewCache,
+    });
   }
 
   async getDocIdsByQuery(
