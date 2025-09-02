@@ -1037,7 +1037,6 @@ export class LinkService {
     const maxOrderResult = await this.prismaService
       .txClient()
       .$queryRawUnsafe<{ maxOrder: number | null }[]>(maxOrderQuery);
-
     return maxOrderResult[0]?.maxOrder || 0;
   }
 
