@@ -595,7 +595,10 @@ export class RecordService {
     }
 
     if (search && search[2] && fieldMap) {
-      const searchFields = await this.getSearchFields(fieldMap, search, query?.viewId);
+      // selectionMap is available later in dbProvider.searchQuery, so include computed fields
+      const searchFields = await this.getSearchFields(fieldMap, search, query?.viewId, undefined, {
+        allowComputed: true,
+      });
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       qb.where((builder) => {
         this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
@@ -1508,7 +1511,8 @@ export class RecordService {
     originFieldInstanceMap: Record<string, IFieldInstance>,
     search?: [string, string?, boolean?],
     viewId?: string,
-    projection?: string[]
+    projection?: string[],
+    options?: { allowComputed?: boolean }
   ) {
     const maxSearchFieldCount = process.env.MAX_SEARCH_FIELD_COUNT
       ? toNumber(process.env.MAX_SEARCH_FIELD_COUNT)
@@ -1547,6 +1551,8 @@ export class RecordService {
       });
     }
 
+    const allowComputed = options?.allowComputed === true;
+
     return uniqBy(
       orderBy(
         Object.values(fieldInstanceMap)
@@ -1558,6 +1564,11 @@ export class RecordService {
           // Link and Rollup fields (and lookup variants) are computed via CTEs and
           // are not selectable in search-index queries built directly from the base table.
           .filter((field) => {
+            if (allowComputed) {
+              // In contexts where selectionMap is available (e.g., record-query-builder),
+              // we can safely include computed fields like Link/Rollup/Lookup.
+              return true;
+            }
             if (field.type === FieldType.Link) return false;
             if (field.type === FieldType.Rollup) return false;
             if (field.isLookup) return false;
@@ -1986,7 +1997,10 @@ export class RecordService {
     );
 
     if (search && search[2]) {
-      const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
+      // selectionMap is available, so allow computed fields
+      const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId, undefined, {
+        allowComputed: true,
+      });
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       qb.where((builder) => {
         this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
@@ -2074,7 +2088,10 @@ export class RecordService {
       });
 
     if (search && search[2]) {
-      const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId);
+      // selectionMap is available, so allow computed fields
+      const searchFields = await this.getSearchFields(fieldInstanceMap, search, viewId, undefined, {
+        allowComputed: true,
+      });
       const tableIndex = await this.tableIndexService.getActivatedTableIndexes(tableId);
       queryBuilder.where((builder) => {
         this.dbProvider.searchQuery(builder, searchFields, tableIndex, search, { selectionMap });
