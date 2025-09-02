@@ -1330,7 +1330,6 @@ export class RecordService {
       }
     );
     const nativeQuery = queryBuilder.whereIn('__id', recordIds).toQuery();
-
     const result = await this.prismaService
       .txClient()
       .$queryRawUnsafe<
