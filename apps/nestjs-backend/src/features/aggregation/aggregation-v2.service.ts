@@ -531,13 +531,7 @@ export class AggregationServiceV2 implements IAggregationService {
           tableId,
           ...(withView?.viewId ? { id: withView.viewId } : {}),
           type: {
-            in: [
-              ViewType.Grid,
-              ViewType.Gantt,
-              ViewType.Kanban,
-              ViewType.Gallery,
-              ViewType.Calendar,
-            ],
+            in: [ViewType.Grid, ViewType.Kanban, ViewType.Gallery, ViewType.Calendar],
           },
           deletedTime: null,
         },
