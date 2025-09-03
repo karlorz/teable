@@ -14,6 +14,7 @@ import { EventEmitterModule } from '../event-emitter/event-emitter.module';
 import { AuthGuard } from '../features/auth/guard/auth.guard';
 import { PermissionGuard } from '../features/auth/guard/permission.guard';
 import { PermissionModule } from '../features/auth/permission.module';
+import { RealtimeOpModule } from '../features/realtime/realtime-op.module';
 import { RequestInfoMiddleware } from '../middleware/request-info.middleware';
 import { RouteTracingInterceptor } from '../tracing/route-tracing.interceptor';
 import { KnexModule } from './knex';
@@ -43,6 +44,7 @@ const globalModules = {
     KnexModule.register(),
     PrismaModule,
     PermissionModule,
+    RealtimeOpModule,
   ],
   // for overriding the default TablePermissionService, FieldPermissionService, RecordPermissionService, and ViewPermissionService
   providers: [
