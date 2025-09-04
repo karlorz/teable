@@ -19,28 +19,21 @@ import type {
   IUpdateRecordRo,
   IUpdateRecordsRo,
 } from '@teable/openapi';
-import { forEach, keyBy, map, pick } from 'lodash';
+import { keyBy, pick } from 'lodash';
 import { IThresholdConfig, ThresholdConfig } from '../../../configs/threshold.config';
 import { retryOnDeadlock } from '../../../utils/retry-decorator';
-import { AttachmentsStorageService } from '../../attachments/attachments-storage.service';
 import { AttachmentsService } from '../../attachments/attachments.service';
 import { getPublicFullStorageUrl } from '../../attachments/plugins/utils';
-import { CollaboratorService } from '../../collaborator/collaborator.service';
-import { FieldConvertingService } from '../../field/field-calculate/field-converting.service';
 import { createFieldInstanceByRaw } from '../../field/model/factory';
 import { RecordModifyService } from '../record-modify/record-modify.service';
 import type { IRecordInnerRo } from '../record.service';
 import { RecordService } from '../record.service';
-import { TypeCastAndValidate } from '../typecast.validate';
 
 @Injectable()
 export class RecordOpenApiService {
   constructor(
     private readonly prismaService: PrismaService,
     private readonly recordService: RecordService,
-    private readonly fieldConvertingService: FieldConvertingService,
-    private readonly attachmentsStorageService: AttachmentsStorageService,
-    private readonly collaboratorService: CollaboratorService,
     private readonly attachmentsService: AttachmentsService,
     private readonly recordModifyService: RecordModifyService,
     @ThresholdConfig() private readonly thresholdConfig: IThresholdConfig
@@ -87,93 +80,6 @@ export class RecordOpenApiService {
   }
 
   // createPureRecords moved into RecordModifyService
-
-  private async getEffectFieldInstances(
-    tableId: string,
-    recordsFields: Record<string, unknown>[],
-    fieldKeyType: FieldKeyType = FieldKeyType.Name,
-    ignoreMissingFields: boolean = false
-  ) {
-    const fieldIdsOrNamesSet = recordsFields.reduce<Set<string>>((acc, recordFields) => {
-      const fieldIds = Object.keys(recordFields);
-      forEach(fieldIds, (fieldId) => acc.add(fieldId));
-      return acc;
-    }, new Set());
-
-    const usedFieldIdsOrNames = Array.from(fieldIdsOrNamesSet);
-
-    const usedFields = await this.prismaService.txClient().field.findMany({
-      where: {
-        tableId,
-        [fieldKeyType]: { in: usedFieldIdsOrNames },
-        deletedTime: null,
-      },
-    });
-
-    if (!ignoreMissingFields && usedFields.length !== usedFieldIdsOrNames.length) {
-      const usedSet = new Set(map(usedFields, fieldKeyType));
-      const missedFields = usedFieldIdsOrNames.filter(
-        (fieldIdOrName) => !usedSet.has(fieldIdOrName)
-      );
-      throw new NotFoundException(`Field ${fieldKeyType}: ${missedFields.join()} not found`);
-    }
-    return map(usedFields, createFieldInstanceByRaw);
-  }
-
-  async validateFieldsAndTypecast<
-    T extends {
-      fields: Record<string, unknown>;
-    },
-  >(
-    tableId: string,
-    records: T[],
-    fieldKeyType: FieldKeyType = FieldKeyType.Name,
-    typecast: boolean = false,
-    ignoreMissingFields: boolean = false
-  ): Promise<T[]> {
-    const recordsFields = map(records, 'fields');
-    const effectFieldInstance = await this.getEffectFieldInstances(
-      tableId,
-      recordsFields,
-      fieldKeyType,
-      ignoreMissingFields
-    );
-
-    const newRecordsFields: Record<string, unknown>[] = recordsFields.map(() => ({}));
-    for (const field of effectFieldInstance) {
-      // skip computed field
-      if (field.isComputed) {
-        continue;
-      }
-      const typeCastAndValidate = new TypeCastAndValidate({
-        services: {
-          prismaService: this.prismaService,
-          fieldConvertingService: this.fieldConvertingService,
-          recordService: this.recordService,
-          attachmentsStorageService: this.attachmentsStorageService,
-          collaboratorService: this.collaboratorService,
-        },
-        field,
-        tableId,
-        typecast,
-      });
-      const fieldIdOrName = field[fieldKeyType];
-
-      const cellValues = recordsFields.map((recordFields) => recordFields[fieldIdOrName]);
-
-      const newCellValues = await typeCastAndValidate.typecastCellValuesWithField(cellValues);
-      newRecordsFields.forEach((recordField, i) => {
-        // do not generate undefined field key
-        if (newCellValues[i] !== undefined) {
-          recordField[fieldIdOrName] = newCellValues[i];
-        }
-      });
-    }
-    return records.map((record, i) => ({
-      ...record,
-      fields: newRecordsFields[i],
-    }));
-  }
 
   @retryOnDeadlock()
   async updateRecords(
@@ -424,19 +330,7 @@ export class RecordOpenApiService {
     order: IRecordInsertOrderRo,
     projection?: string[]
   ) {
-    const query = { fieldKeyType: FieldKeyType.Id, projection };
-    const result = await this.recordService.getRecord(tableId, recordId, query);
-    const records = { fields: result.fields };
-    const createRecordsRo = {
-      fieldKeyType: FieldKeyType.Id,
-      order,
-      records: [records],
-    };
-    return await this.prismaService
-      .$tx(async () => this.createRecords(tableId, createRecordsRo))
-      .then((res) => {
-        return res.records[0];
-      });
+    return this.recordModifyService.duplicateRecord(tableId, recordId, order, projection);
   }
 
   async buttonClick(tableId: string, recordId: string, fieldId: string) {
