@@ -361,7 +361,7 @@ export class ViewService implements IReadonlyAdapterService {
     await this.update(
       {
         viewId,
-        version: version + 1,
+        version,
         columnMeta: columnMeta ? JSON.parse(columnMeta) : {},
       },
       opContext
