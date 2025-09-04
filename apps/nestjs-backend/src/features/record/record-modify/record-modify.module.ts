@@ -31,6 +31,6 @@ import { RecordUpdateService } from './record-update.service';
     RecordDeleteService,
     RecordDuplicateService,
   ],
-  exports: [RecordModifyService],
+  exports: [RecordModifyService, RecordModifySharedService],
 })
 export class RecordModifyModule {}

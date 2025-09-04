@@ -26,6 +26,7 @@ import { AttachmentsService } from '../../attachments/attachments.service';
 import { getPublicFullStorageUrl } from '../../attachments/plugins/utils';
 import { createFieldInstanceByRaw } from '../../field/model/factory';
 import { RecordModifyService } from '../record-modify/record-modify.service';
+import { RecordModifySharedService } from '../record-modify/record-modify.shared.service';
 import type { IRecordInnerRo } from '../record.service';
 import { RecordService } from '../record.service';
 
@@ -36,6 +37,7 @@ export class RecordOpenApiService {
     private readonly recordService: RecordService,
     private readonly attachmentsService: AttachmentsService,
     private readonly recordModifyService: RecordModifyService,
+    private readonly recordModifySharedService: RecordModifySharedService,
     @ThresholdConfig() private readonly thresholdConfig: IThresholdConfig
   ) {}
 
@@ -399,5 +401,25 @@ export class RecordOpenApiService {
         },
       },
     });
+  }
+
+  public validateFieldsAndTypecast<
+    T extends {
+      fields: Record<string, unknown>;
+    },
+  >(
+    tableId: string,
+    records: T[],
+    fieldKeyType: FieldKeyType = FieldKeyType.Name,
+    typecast: boolean = false,
+    ignoreMissingFields: boolean = false
+  ) {
+    return this.recordModifySharedService.validateFieldsAndTypecast(
+      tableId,
+      records,
+      fieldKeyType,
+      typecast,
+      ignoreMissingFields
+    );
   }
 }
